@@ -1,0 +1,6 @@
+@model List<Doctor>
+@{ ViewData["Title"] = "Doctors"; }
+<section class="panel"><div class="panel-head"><form class="search-form"><input name="q" value="@ViewBag.Query" placeholder="Search doctors..."/><button class="btn ghost">Search</button></form><a class="btn primary" asp-action="Create">Add doctor</a></div>
+<div class="table-wrap"><table><thead><tr><th>Doctor</th><th>Specialty</th><th>License</th><th>Status</th><th></th></tr></thead><tbody>
+@foreach (var item in Model) { <tr><td><strong>Dr @item.FullName</strong><small>@item.Email · @item.Phone</small></td><td>@item.Specialty</td><td>@item.LicenseNumber</td><td><span class="badge @item.Status.ToLowerInvariant()">@item.Status</span></td><td class="actions">@if (!item.Status.Equals("Approved", StringComparison.OrdinalIgnoreCase)) { <form asp-action="Approve" method="post"><input type="hidden" name="id" value="@item.Id"/><button class="btn small success">Approve</button></form> }<a class="btn small ghost" asp-action="Edit" asp-route-id="@item.Id">Edit</a><form asp-action="Delete" method="post" onsubmit="return confirm('Delete this doctor?');"><input type="hidden" name="id" value="@item.Id"/><button class="btn small danger">Delete</button></form></td></tr> }
+</tbody></table></div></section>

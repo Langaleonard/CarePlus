@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"] - Care Plus</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body>
+@if (Context.Session.GetString("AdminUser") == null)
+{
+    @RenderBody()
+}
+else
+{
+    <div class="app-shell">
+        <aside class="sidebar">
+            <a class="brand" asp-controller="Dashboard" asp-action="Index">
+                <span class="brand-mark">+</span>
+                <span><strong>CARE</strong><small>PLUS</small></span>
+            </a>
+            <nav class="side-nav">
+                <a asp-controller="Dashboard" asp-action="Index">Dashboard</a>
+                <a asp-controller="Patients" asp-action="Index">Patients</a>
+                <a asp-controller="Doctors" asp-action="Index">Doctors</a>
+                <a asp-controller="Appointments" asp-action="Index">Appointments</a>
+                <a asp-controller="Records" asp-action="Index">Medical records</a>
+                <a asp-controller="Prescriptions" asp-action="Index">Prescriptions</a>
+                <a asp-controller="Reports" asp-action="Index">Reports</a>
+            </nav>
+            <div class="sidebar-bottom">
+                <span class="user-chip">Admin</span>
+                <a asp-controller="Account" asp-action="Logout">Sign out</a>
+            </div>
+        </aside>
+        <main class="main-content">
+            <header class="topbar">
+                <div>
+                    <span class="eyebrow">Care Plus Healthcare Management System</span>
+                    <h1>@ViewData["Title"]</h1>
+                </div>
+                <div class="topbar-user">@Context.Session.GetString("AdminUser")</div>
+            </header>
+            @if (TempData["Success"] != null)
+            {
+                <div class="alert success">@TempData["Success"]</div>
+            }
+            @RenderBody()
+        </main>
+    </div>
+}
+<script src="~/js/site.js" asp-append-version="true"></script>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

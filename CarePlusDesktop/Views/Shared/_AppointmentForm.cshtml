@@ -1,0 +1,3 @@
+@model Appointment
+<input asp-for="Id" type="hidden"/><div asp-validation-summary="ModelOnly" class="validation"></div>
+<div class="form-grid"><label>Patient<input asp-for="PatientName" /></label><label>Doctor<input asp-for="DoctorName" /></label><label>Date<input asp-for="Date" type="date" /></label><label>Time<input asp-for="Time" type="time" /></label><label>Status<select asp-for="Status"><option>Requested</option><option>Confirmed</option><option>Completed</option><option>Cancelled</option></select></label><label class="span-2">Reason<input asp-for="Reason" /></label><label class="span-2">Notes<textarea asp-for="Notes" rows="4"></textarea></label></div>

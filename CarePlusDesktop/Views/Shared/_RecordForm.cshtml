@@ -1,0 +1,2 @@
+@model MedicalRecord
+<input asp-for="Id" type="hidden"/><div class="form-grid"><label>Patient<input asp-for="PatientName" /></label><label>Doctor<input asp-for="DoctorName" /></label><label>Record date<input asp-for="RecordDate" type="date" /></label><label class="span-2">Diagnosis<input asp-for="Diagnosis" /></label><label class="span-2">Treatment notes<textarea asp-for="TreatmentNotes" rows="5"></textarea></label></div>

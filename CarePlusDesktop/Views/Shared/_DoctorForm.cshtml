@@ -1,0 +1,5 @@
+@model Doctor
+<input asp-for="Id" type="hidden" /><div asp-validation-summary="ModelOnly" class="validation"></div>
+<div class="form-grid">
+<label>First name<input asp-for="FirstName" /></label><label>Last name<input asp-for="LastName" /></label><label>Email<input asp-for="Email" /></label><label>Phone<input asp-for="Phone" /></label><label>Specialty<input asp-for="Specialty" /></label><label>License number<input asp-for="LicenseNumber" /></label><label>Status<select asp-for="Status"><option>Pending</option><option>Approved</option><option>Suspended</option></select></label>
+</div>

@@ -1,0 +1,13 @@
+@model Patient
+<input asp-for="Id" type="hidden" />
+<div asp-validation-summary="ModelOnly" class="validation"></div>
+<div class="form-grid">
+    <label>First name<input asp-for="FirstName" /><span asp-validation-for="FirstName"></span></label>
+    <label>Last name<input asp-for="LastName" /><span asp-validation-for="LastName"></span></label>
+    <label>Email<input asp-for="Email" /></label>
+    <label>Phone<input asp-for="Phone" /></label>
+    <label>Date of birth<input asp-for="DateOfBirth" type="date" /></label>
+    <label>Gender<select asp-for="Gender"><option value="">Select</option><option>Female</option><option>Male</option><option>Other</option></select></label>
+    <label class="span-2">Address<input asp-for="Address" /></label>
+    <label class="span-2">Medical information<textarea asp-for="MedicalInformation" rows="4"></textarea></label>
+</div>

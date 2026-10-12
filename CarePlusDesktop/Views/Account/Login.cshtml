@@ -1,0 +1,26 @@
+@{
+    ViewData["Title"] = "Admin Login";
+}
+<div class="login-page">
+    <div class="login-panel">
+        <div class="login-brand"><span class="brand-mark">+</span><div><strong>CARE</strong><span>PLUS</span></div></div>
+        <p class="muted">Healthcare Management System</p>
+        <h1>Welcome back</h1>
+        <p class="muted">Sign in to the desktop administration portal.</p>
+        @if (ViewBag.Error != null) { <div class="alert danger">@ViewBag.Error</div> }
+        <form method="post" class="form-stack">
+            @Html.AntiForgeryToken()
+            <label>Email address<input type="email" name="email" value="@ViewBag.Email" required placeholder="admin@careplus.local" /></label>
+            <label>Password<input type="password" name="password" required placeholder="Enter password" /></label>
+            <button class="btn primary full" type="submit">Sign in</button>
+        </form>
+        <div class="demo-note"><strong>Demo login:</strong> admin@careplus.local / CarePlus2026!</div>
+    </div>
+    <div class="login-art">
+        <div class="hero-card">
+            <span class="pill">Desktop Admin Portal</span>
+            <h2>Connected healthcare administration in one place.</h2>
+            <p>Manage patients, doctors, appointments, records and prescriptions from a secure role-based dashboard.</p>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,2 @@
+@model Prescription
+<input asp-for="Id" type="hidden"/><div class="form-grid"><label>Patient<input asp-for="PatientName" /></label><label>Doctor<input asp-for="DoctorName" /></label><label>Medication<input asp-for="Medication" /></label><label>Dosage<input asp-for="Dosage" /></label><label>Prescription date<input asp-for="PrescriptionDate" type="date" /></label><label class="span-2">Instructions<textarea asp-for="Instructions" rows="4"></textarea></label></div>
