@@ -1,2 +1,35 @@
 @model Prescription
-<input asp-for="Id" type="hidden"/><div class="form-grid"><label>Patient<input asp-for="PatientName" /></label><label>Doctor<input asp-for="DoctorName" /></label><label>Medication<input asp-for="Medication" /></label><label>Dosage<input asp-for="Dosage" /></label><label>Prescription date<input asp-for="PrescriptionDate" type="date" /></label><label class="span-2">Instructions<textarea asp-for="Instructions" rows="4"></textarea></label></div>
+@{
+    var patients = ViewBag.Patients as IEnumerable<string> ?? Enumerable.Empty<string>();
+    var doctors = ViewBag.Doctors as IEnumerable<string> ?? Enumerable.Empty<string>();
+}
+<input asp-for="Id" type="hidden" />
+<div asp-validation-summary="ModelOnly" class="validation"></div>
+<div class="form-grid">
+    <label>
+        Patient
+        <select asp-for="PatientName">
+            <option value="">Select patient</option>
+            @foreach (var patient in patients)
+            {
+                <option value="@patient">@patient</option>
+            }
+        </select>
+        <span asp-validation-for="PatientName"></span>
+    </label>
+    <label>
+        Doctor
+        <select asp-for="DoctorName">
+            <option value="">Select doctor</option>
+            @foreach (var doctor in doctors)
+            {
+                <option value="@doctor">@doctor</option>
+            }
+        </select>
+        <span asp-validation-for="DoctorName"></span>
+    </label>
+    <label>Medication<input asp-for="Medication" placeholder="Medication" /><span asp-validation-for="Medication"></span></label>
+    <label>Dosage<input asp-for="Dosage" placeholder="e.g. 500 mg" /><span asp-validation-for="Dosage"></span></label>
+    <label>Prescription date<input asp-for="PrescriptionDate" type="date" /><span asp-validation-for="PrescriptionDate"></span></label>
+    <label class="span-2">Instructions<textarea asp-for="Instructions" rows="4" placeholder="Usage instructions"></textarea></label>
+</div>

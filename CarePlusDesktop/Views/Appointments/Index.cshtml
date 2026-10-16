@@ -1,6 +1,45 @@
 @model List<Appointment>
 @{ ViewData["Title"] = "Appointments"; }
-<section class="panel"><div class="panel-head"><div class="filter-row"><a class="chip" asp-action="Index">All</a><a class="chip" asp-action="Index" asp-route-status="Requested">Requested</a><a class="chip" asp-action="Index" asp-route-status="Confirmed">Confirmed</a><a class="chip" asp-action="Index" asp-route-status="Completed">Completed</a></div><a class="btn primary" asp-action="Create">Add appointment</a></div>
-<div class="table-wrap"><table><thead><tr><th>Patient</th><th>Doctor</th><th>Date & time</th><th>Status</th><th>Reason</th><th></th></tr></thead><tbody>
-@foreach (var item in Model) { <tr><td><strong>@item.PatientName</strong></td><td>@item.DoctorName</td><td>@item.Date<small>@item.Time</small></td><td><span class="badge @item.Status.ToLowerInvariant()">@item.Status</span></td><td>@item.Reason</td><td class="actions">@if (item.Status == "Requested") { <form asp-action="SetStatus" method="post"><input type="hidden" name="id" value="@item.Id"/><input type="hidden" name="status" value="Confirmed"/><button class="btn small success">Confirm</button></form> }@if (item.Status == "Confirmed") { <form asp-action="SetStatus" method="post"><input type="hidden" name="id" value="@item.Id"/><input type="hidden" name="status" value="Completed"/><button class="btn small success">Complete</button></form> }<a class="btn small ghost" asp-action="Edit" asp-route-id="@item.Id">Edit</a></td></tr> }
-</tbody></table></div></section>
+<section class="panel">
+    <div class="panel-head">
+        <div class="filter-row">
+            <a class="chip @(string.IsNullOrWhiteSpace(ViewBag.Status as string) ? "active" : "")" asp-action="Index">All</a>
+            <a class="chip @((ViewBag.Status as string) == "Requested" ? "active" : "")" asp-action="Index" asp-route-status="Requested">Requested</a>
+            <a class="chip @((ViewBag.Status as string) == "Confirmed" ? "active" : "")" asp-action="Index" asp-route-status="Confirmed">Confirmed</a>
+            <a class="chip @((ViewBag.Status as string) == "Completed" ? "active" : "")" asp-action="Index" asp-route-status="Completed">Completed</a>
+        </div>
+        <a class="btn primary" asp-action="Create">Add appointment</a>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Patient</th><th>Doctor</th><th>Date & time</th><th>Status</th><th>Reason</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var item in Model)
+            {
+                var patient = string.IsNullOrWhiteSpace(item.PatientName) || item.PatientName.Equals("null", StringComparison.OrdinalIgnoreCase) ? "Not provided" : item.PatientName;
+                var doctor = string.IsNullOrWhiteSpace(item.DoctorName) || item.DoctorName.Equals("null", StringComparison.OrdinalIgnoreCase) ? "Not assigned" : item.DoctorName;
+                <tr>
+                    <td><strong>@patient</strong></td>
+                    <td>@doctor</td>
+                    <td>@item.Date<small>@(string.IsNullOrWhiteSpace(item.Time) ? "Time not set" : item.Time)</small></td>
+                    <td><span class="badge @item.Status.ToLowerInvariant()">@item.Status</span></td>
+                    <td>@item.Reason</td>
+                    <td class="actions">
+                        @if (item.Status.Equals("Requested", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <form asp-action="SetStatus" method="post"><input type="hidden" name="id" value="@item.Id"/><input type="hidden" name="status" value="Confirmed"/><button class="btn small success">Confirm</button></form>
+                        }
+                        @if (item.Status.Equals("Confirmed", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <form asp-action="SetStatus" method="post"><input type="hidden" name="id" value="@item.Id"/><input type="hidden" name="status" value="Completed"/><button class="btn small success">Complete</button></form>
+                        }
+                        <a class="btn small ghost" asp-action="Edit" asp-route-id="@item.Id">Edit</a>
+                        <form asp-action="Delete" method="post" onsubmit="return confirm('Delete this appointment?');"><input type="hidden" name="id" value="@item.Id"/><button class="btn small danger">Delete</button></form>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    @if (!Model.Any()) { <div class="empty">No appointments found.</div> }
+</section>

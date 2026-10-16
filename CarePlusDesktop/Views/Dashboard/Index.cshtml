@@ -1,11 +1,8 @@
 @model DashboardViewModel
-@{
-    ViewData["Title"] = "Dashboard";
-}
-@if (ViewBag.Error != null) { <div class="alert danger">Could not load all data: @ViewBag.Error</div> }
+@{ ViewData["Title"] = "Dashboard"; }
 <div class="status-strip @(Model.FirebaseConnected ? "online" : "demo")">
     <strong>@(Model.FirebaseConnected ? "Firebase connected" : "Demo mode")</strong>
-    <span>@(Model.FirebaseConnected ? "Live mobile-app data is being used." : "Add your Firebase DatabaseUrl in appsettings.json to use the shared cloud database.")</span>
+    <span>@(Model.FirebaseConnected ? "Live mobile-app data is being used." : "Add your Firebase configuration to use the shared cloud database.")</span>
 </div>
 <div class="stats-grid">
     <div class="stat-card"><span>Patients</span><strong>@Model.Patients</strong><small>Registered profiles</small></div>
@@ -16,20 +13,22 @@
 </div>
 <div class="content-grid two">
     <section class="panel">
-        <div class="panel-head"><div><span class="eyebrow">Schedule</span><h2>Upcoming appointments</h2></div><a class="btn ghost" asp-controller="Appointments">View all</a></div>
+        <div class="panel-head"><h2>Upcoming appointments</h2><a class="btn ghost" asp-controller="Appointments">View all</a></div>
         @if (!Model.RecentAppointments.Any()) { <div class="empty">No appointments found.</div> }
         else
         {
             <div class="list-stack">
                 @foreach (var item in Model.RecentAppointments)
                 {
-                    <div class="list-row"><div class="avatar">@item.PatientName.FirstOrDefault()</div><div class="grow"><strong>@item.PatientName</strong><small>@item.DoctorName · @item.Date @item.Time</small></div><span class="badge @item.Status.ToLowerInvariant()">@item.Status</span></div>
+                    var patient = string.IsNullOrWhiteSpace(item.PatientName) || item.PatientName.Equals("null", StringComparison.OrdinalIgnoreCase) ? "Patient" : item.PatientName;
+                    var doctor = string.IsNullOrWhiteSpace(item.DoctorName) || item.DoctorName.Equals("null", StringComparison.OrdinalIgnoreCase) ? "Not assigned" : item.DoctorName;
+                    <div class="list-row"><div class="avatar">@patient.FirstOrDefault()</div><div class="grow"><strong>@patient</strong><small>@doctor · @item.Date @(string.IsNullOrWhiteSpace(item.Time) ? "" : item.Time)</small></div><span class="badge @item.Status.ToLowerInvariant()">@item.Status</span></div>
                 }
             </div>
         }
     </section>
     <section class="panel">
-        <span class="eyebrow">Quick actions</span><h2>Administration</h2>
+        <h2>Administration</h2>
         <div class="quick-grid">
             <a asp-controller="Patients" asp-action="Create"><strong>+ Patient</strong><span>Create a patient profile</span></a>
             <a asp-controller="Doctors" asp-action="Create"><strong>+ Doctor</strong><span>Add a healthcare professional</span></a>

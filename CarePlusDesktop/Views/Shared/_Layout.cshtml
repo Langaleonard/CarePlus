@@ -1,3 +1,6 @@
+@{
+    var currentController = ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -20,13 +23,13 @@ else
                 <span><strong>CARE</strong><small>PLUS</small></span>
             </a>
             <nav class="side-nav">
-                <a asp-controller="Dashboard" asp-action="Index">Dashboard</a>
-                <a asp-controller="Patients" asp-action="Index">Patients</a>
-                <a asp-controller="Doctors" asp-action="Index">Doctors</a>
-                <a asp-controller="Appointments" asp-action="Index">Appointments</a>
-                <a asp-controller="Records" asp-action="Index">Medical records</a>
-                <a asp-controller="Prescriptions" asp-action="Index">Prescriptions</a>
-                <a asp-controller="Reports" asp-action="Index">Reports</a>
+                <a class="@(currentController == "Dashboard" ? "active" : "")" asp-controller="Dashboard" asp-action="Index">Dashboard</a>
+                <a class="@(currentController == "Patients" ? "active" : "")" asp-controller="Patients" asp-action="Index">Patients</a>
+                <a class="@(currentController == "Doctors" ? "active" : "")" asp-controller="Doctors" asp-action="Index">Doctors</a>
+                <a class="@(currentController == "Appointments" ? "active" : "")" asp-controller="Appointments" asp-action="Index">Appointments</a>
+                <a class="@(currentController == "Records" ? "active" : "")" asp-controller="Records" asp-action="Index">Medical records</a>
+                <a class="@(currentController == "Prescriptions" ? "active" : "")" asp-controller="Prescriptions" asp-action="Index">Prescriptions</a>
+                <a class="@(currentController == "Reports" ? "active" : "")" asp-controller="Reports" asp-action="Index">Reports</a>
             </nav>
             <div class="sidebar-bottom">
                 <span class="user-chip">Admin</span>
@@ -35,10 +38,7 @@ else
         </aside>
         <main class="main-content">
             <header class="topbar">
-                <div>
-                    <span class="eyebrow">Care Plus Healthcare Management System</span>
-                    <h1>@ViewData["Title"]</h1>
-                </div>
+                <div><h1>@ViewData["Title"]</h1></div>
                 <div class="topbar-user">@Context.Session.GetString("AdminUser")</div>
             </header>
             @if (TempData["Success"] != null)

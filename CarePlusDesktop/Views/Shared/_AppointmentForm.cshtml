@@ -1,3 +1,36 @@
 @model Appointment
-<input asp-for="Id" type="hidden"/><div asp-validation-summary="ModelOnly" class="validation"></div>
-<div class="form-grid"><label>Patient<input asp-for="PatientName" /></label><label>Doctor<input asp-for="DoctorName" /></label><label>Date<input asp-for="Date" type="date" /></label><label>Time<input asp-for="Time" type="time" /></label><label>Status<select asp-for="Status"><option>Requested</option><option>Confirmed</option><option>Completed</option><option>Cancelled</option></select></label><label class="span-2">Reason<input asp-for="Reason" /></label><label class="span-2">Notes<textarea asp-for="Notes" rows="4"></textarea></label></div>
+@{
+    var patients = ViewBag.Patients as IEnumerable<string> ?? Enumerable.Empty<string>();
+    var doctors = ViewBag.Doctors as IEnumerable<string> ?? Enumerable.Empty<string>();
+}
+<input asp-for="Id" type="hidden" />
+<div asp-validation-summary="ModelOnly" class="validation"></div>
+<div class="form-grid">
+    <label>
+        Patient
+        <select asp-for="PatientName">
+            <option value="">Select patient</option>
+            @foreach (var patient in patients)
+            {
+                <option value="@patient">@patient</option>
+            }
+        </select>
+        <span asp-validation-for="PatientName"></span>
+    </label>
+    <label>
+        Doctor
+        <select asp-for="DoctorName">
+            <option value="">Select doctor</option>
+            @foreach (var doctor in doctors)
+            {
+                <option value="@doctor">@doctor</option>
+            }
+        </select>
+        <span asp-validation-for="DoctorName"></span>
+    </label>
+    <label>Date<input asp-for="Date" type="date" /><span asp-validation-for="Date"></span></label>
+    <label>Time<input asp-for="Time" type="time" /><span asp-validation-for="Time"></span></label>
+    <label>Status<select asp-for="Status"><option>Requested</option><option>Confirmed</option><option>Completed</option><option>Cancelled</option></select></label>
+    <label class="span-2">Reason<input asp-for="Reason" placeholder="Reason for consultation" /></label>
+    <label class="span-2">Notes<textarea asp-for="Notes" rows="4" placeholder="Optional notes"></textarea></label>
+</div>

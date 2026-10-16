@@ -1,2 +1,34 @@
 @model MedicalRecord
-<input asp-for="Id" type="hidden"/><div class="form-grid"><label>Patient<input asp-for="PatientName" /></label><label>Doctor<input asp-for="DoctorName" /></label><label>Record date<input asp-for="RecordDate" type="date" /></label><label class="span-2">Diagnosis<input asp-for="Diagnosis" /></label><label class="span-2">Treatment notes<textarea asp-for="TreatmentNotes" rows="5"></textarea></label></div>
+@{
+    var patients = ViewBag.Patients as IEnumerable<string> ?? Enumerable.Empty<string>();
+    var doctors = ViewBag.Doctors as IEnumerable<string> ?? Enumerable.Empty<string>();
+}
+<input asp-for="Id" type="hidden" />
+<div asp-validation-summary="ModelOnly" class="validation"></div>
+<div class="form-grid">
+    <label>
+        Patient
+        <select asp-for="PatientName">
+            <option value="">Select patient</option>
+            @foreach (var patient in patients)
+            {
+                <option value="@patient">@patient</option>
+            }
+        </select>
+        <span asp-validation-for="PatientName"></span>
+    </label>
+    <label>
+        Doctor
+        <select asp-for="DoctorName">
+            <option value="">Select doctor</option>
+            @foreach (var doctor in doctors)
+            {
+                <option value="@doctor">@doctor</option>
+            }
+        </select>
+        <span asp-validation-for="DoctorName"></span>
+    </label>
+    <label>Record date<input asp-for="RecordDate" type="date" /><span asp-validation-for="RecordDate"></span></label>
+    <label class="span-2">Diagnosis<input asp-for="Diagnosis" placeholder="Diagnosis" /><span asp-validation-for="Diagnosis"></span></label>
+    <label class="span-2">Treatment notes<textarea asp-for="TreatmentNotes" rows="5" placeholder="Treatment and follow-up notes"></textarea></label>
+</div>

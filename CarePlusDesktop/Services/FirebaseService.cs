@@ -1,7 +1,10 @@
 using System.Collections.Concurrent;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using CarePlusDesktop.Models;
+using Google.Apis.Auth.OAuth2;
 
 namespace CarePlusDesktop.Services;
 
@@ -9,7 +12,8 @@ public class FirebaseService : IFirebaseService
 {
     private readonly HttpClient _http;
     private readonly string _databaseUrl;
-    private readonly string _authToken;
+    private readonly GoogleCredential? _credential;
+    private readonly ILogger<FirebaseService> _logger;
 
     private static readonly ConcurrentDictionary<string, Patient> DemoPatients = new();
     private static readonly ConcurrentDictionary<string, Doctor> DemoDoctors = new();
@@ -21,16 +25,55 @@ public class FirebaseService : IFirebaseService
     {
         PropertyNameCaseInsensitive = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        IgnoreReadOnlyProperties = true,
         WriteIndented = false
     };
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(_databaseUrl) && _databaseUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase);
+    public bool IsConfigured =>
+        !string.IsNullOrWhiteSpace(_databaseUrl) &&
+        _databaseUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) &&
+        _credential != null;
 
-    public FirebaseService(IHttpClientFactory clientFactory, IConfiguration config)
+    public FirebaseService(
+        IHttpClientFactory clientFactory,
+        IConfiguration config,
+        IWebHostEnvironment environment,
+        ILogger<FirebaseService> logger)
     {
         _http = clientFactory.CreateClient();
         _databaseUrl = (config["Firebase:DatabaseUrl"] ?? "").TrimEnd('/');
-        _authToken = config["Firebase:AuthToken"] ?? "";
+        _logger = logger;
+
+        var serviceAccountPath = config["Firebase:ServiceAccountPath"];
+
+        if (!string.IsNullOrWhiteSpace(serviceAccountPath))
+        {
+            var fullPath = Path.IsPathRooted(serviceAccountPath)
+                ? serviceAccountPath
+                : Path.Combine(environment.ContentRootPath, serviceAccountPath);
+
+            if (File.Exists(fullPath))
+            {
+                try
+                {
+                    _credential = GoogleCredential
+                        .FromFile(fullPath)
+                        .CreateScoped(
+                            "https://www.googleapis.com/auth/firebase.database",
+                            "https://www.googleapis.com/auth/userinfo.email");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Could not load the Firebase service account file.");
+                }
+            }
+            else
+            {
+                _logger.LogWarning("Firebase service account file was not found at {Path}.", fullPath);
+            }
+        }
+
         SeedDemo();
     }
 
@@ -54,15 +97,38 @@ public class FirebaseService : IFirebaseService
     private string NodeUrl(string node, string? id = null)
     {
         var path = string.IsNullOrWhiteSpace(id) ? node : $"{node}/{id}";
-        var url = $"{_databaseUrl}/{path}.json";
-        if (!string.IsNullOrWhiteSpace(_authToken)) url += $"?auth={Uri.EscapeDataString(_authToken)}";
-        return url;
+        return $"{_databaseUrl}/{path}.json";
+    }
+
+    private async Task<HttpRequestMessage> CreateRequestAsync(
+        HttpMethod method,
+        string node,
+        string? id = null,
+        HttpContent? content = null)
+    {
+        var request = new HttpRequestMessage(method, NodeUrl(node, id));
+        request.Content = content;
+
+        if (_credential != null)
+        {
+            var token = await _credential.UnderlyingCredential.GetAccessTokenForRequestAsync();
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+
+        return request;
     }
 
     private async Task<JsonDocument?> GetJsonAsync(string node, string? id = null)
     {
-        using var response = await _http.GetAsync(NodeUrl(node, id));
-        if (!response.IsSuccessStatusCode) return null;
+        using var request = await CreateRequestAsync(HttpMethod.Get, node, id);
+        using var response = await _http.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new InvalidOperationException($"Firebase request failed ({(int)response.StatusCode}): {error}");
+        }
+
         var text = await response.Content.ReadAsStringAsync();
         if (string.IsNullOrWhiteSpace(text) || text == "null") return null;
         return JsonDocument.Parse(text);
@@ -79,27 +145,37 @@ public class FirebaseService : IFirebaseService
             if (item.Value.ValueKind == JsonValueKind.Object)
                 result.Add(mapper(item.Name, item.Value));
         }
+
         return result;
     }
 
     private async Task<string> SaveAsync<T>(string node, string? id, T item)
     {
+        var content = JsonContent.Create(item, options: JsonOptions);
+
         if (!string.IsNullOrWhiteSpace(id))
         {
-            using var response = await _http.PutAsJsonAsync(NodeUrl(node, id), item, JsonOptions);
+            // PATCH preserves mobile-app fields that are not represented by the desktop model.
+            using var request = await CreateRequestAsync(HttpMethod.Patch, node, id, content);
+            using var response = await _http.SendAsync(request);
             response.EnsureSuccessStatusCode();
             return id;
         }
 
-        using var post = await _http.PostAsJsonAsync(NodeUrl(node), item, JsonOptions);
+        using var postRequest = await CreateRequestAsync(HttpMethod.Post, node, content: content);
+        using var post = await _http.SendAsync(postRequest);
         post.EnsureSuccessStatusCode();
+
         var payload = await post.Content.ReadFromJsonAsync<Dictionary<string, string>>();
-        return payload != null && payload.TryGetValue("name", out var key) ? key : Guid.NewGuid().ToString("N");
+        return payload != null && payload.TryGetValue("name", out var key)
+            ? key
+            : Guid.NewGuid().ToString("N");
     }
 
     private async Task DeleteAsync(string node, string id)
     {
-        using var response = await _http.DeleteAsync(NodeUrl(node, id));
+        using var request = await CreateRequestAsync(HttpMethod.Delete, node, id);
+        using var response = await _http.SendAsync(request);
         response.EnsureSuccessStatusCode();
     }
 
@@ -109,20 +185,26 @@ public class FirebaseService : IFirebaseService
         {
             if (names.Any(n => p.Name.Equals(n, StringComparison.OrdinalIgnoreCase)))
             {
-                if (p.Value.ValueKind == JsonValueKind.String) return p.Value.GetString() ?? "";
-                if (p.Value.ValueKind is JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False) return p.Value.ToString();
+                if (p.Value.ValueKind == JsonValueKind.String)
+                {
+                    var value = p.Value.GetString() ?? "";
+                    return value.Equals("null", StringComparison.OrdinalIgnoreCase) ? "" : value;
+                }
+                if (p.Value.ValueKind is JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False)
+                    return p.Value.ToString();
             }
         }
+
         return "";
     }
 
     private static Patient MapPatient(string id, JsonElement e) => new()
     {
         Id = id,
-        FirstName = S(e, "firstName", "firstname", "name"),
-        LastName = S(e, "lastName", "lastname", "surname"),
+        FirstName = S(e, "firstName", "firstname", "first_name", "name"),
+        LastName = S(e, "lastName", "lastname", "last_name", "surname"),
         Email = S(e, "email"),
-        Phone = S(e, "phone", "contact", "contactNumber"),
+        Phone = S(e, "phone", "contact", "contactNumber", "phoneNumber", "mobile"),
         DateOfBirth = S(e, "dateOfBirth", "dob", "birthDate"),
         Gender = S(e, "gender"),
         Address = S(e, "address", "location"),
@@ -132,22 +214,22 @@ public class FirebaseService : IFirebaseService
     private static Doctor MapDoctor(string id, JsonElement e) => new()
     {
         Id = id,
-        FirstName = S(e, "firstName", "firstname", "name"),
-        LastName = S(e, "lastName", "lastname", "surname"),
+        FirstName = S(e, "firstName", "firstname", "first_name", "name"),
+        LastName = S(e, "lastName", "lastname", "last_name", "surname"),
         Email = S(e, "email"),
-        Phone = S(e, "phone", "contact", "contactNumber"),
+        Phone = S(e, "phone", "contact", "contactNumber", "phoneNumber", "mobile"),
         Specialty = S(e, "specialty", "speciality", "specialisation", "specialization"),
-        LicenseNumber = S(e, "licenseNumber", "licenseNo", "practiceNumber"),
+        LicenseNumber = S(e, "licenseNumber", "licenseNo", "practiceNumber", "license"),
         Status = string.IsNullOrWhiteSpace(S(e, "status")) ? "Pending" : S(e, "status")
     };
 
     private static Appointment MapAppointment(string id, JsonElement e) => new()
     {
         Id = id,
-        PatientName = S(e, "patientName", "patient", "patientEmail"),
-        DoctorName = S(e, "doctorName", "doctor", "doctorEmail"),
-        Date = S(e, "date", "appointmentDate"),
-        Time = S(e, "time", "appointmentTime"),
+        PatientName = S(e, "patientName", "patient", "patientEmail", "patientFullName", "patient_name"),
+        DoctorName = S(e, "doctorName", "doctor", "doctorEmail", "doctorFullName", "doctor_name", "assignedDoctor"),
+        Date = S(e, "date", "appointmentDate", "appointment_date"),
+        Time = S(e, "time", "appointmentTime", "appointment_time"),
         Status = string.IsNullOrWhiteSpace(S(e, "status")) ? "Requested" : S(e, "status"),
         Reason = S(e, "reason", "purpose"),
         Notes = S(e, "notes", "comment")
@@ -174,50 +256,110 @@ public class FirebaseService : IFirebaseService
         PrescriptionDate = S(e, "prescriptionDate", "date")
     };
 
-    public async Task<List<Patient>> GetPatientsAsync() => IsConfigured ? await GetCollectionAsync("Patient", MapPatient) : DemoPatients.Values.OrderBy(x => x.LastName).ToList();
-    public async Task<Patient?> GetPatientAsync(string id) => IsConfigured ? (await GetCollectionAsync("Patient", MapPatient)).FirstOrDefault(x => x.Id == id) : DemoPatients.GetValueOrDefault(id);
+    public async Task<List<Patient>> GetPatientsAsync() =>
+        IsConfigured ? await GetCollectionAsync("Patient", MapPatient) : DemoPatients.Values.OrderBy(x => x.LastName).ToList();
+
+    public async Task<Patient?> GetPatientAsync(string id) =>
+        IsConfigured ? (await GetCollectionAsync("Patient", MapPatient)).FirstOrDefault(x => x.Id == id) : DemoPatients.GetValueOrDefault(id);
+
     public async Task<string> SavePatientAsync(Patient item)
     {
         if (IsConfigured) return await SaveAsync("Patient", item.Id, item);
-        var id = item.Id ?? Guid.NewGuid().ToString("N")[..8]; item.Id = id; DemoPatients[id] = item; return id;
+        var id = item.Id ?? Guid.NewGuid().ToString("N")[..8];
+        item.Id = id;
+        DemoPatients[id] = item;
+        return id;
     }
-    public async Task DeletePatientAsync(string id) { if (IsConfigured) await DeleteAsync("Patient", id); else DemoPatients.TryRemove(id, out _); }
 
-    public async Task<List<Doctor>> GetDoctorsAsync() => IsConfigured ? await GetCollectionAsync("Doctor", MapDoctor) : DemoDoctors.Values.OrderBy(x => x.LastName).ToList();
-    public async Task<Doctor?> GetDoctorAsync(string id) => IsConfigured ? (await GetCollectionAsync("Doctor", MapDoctor)).FirstOrDefault(x => x.Id == id) : DemoDoctors.GetValueOrDefault(id);
+    public async Task DeletePatientAsync(string id)
+    {
+        if (IsConfigured) await DeleteAsync("Patient", id);
+        else DemoPatients.TryRemove(id, out _);
+    }
+
+    public async Task<List<Doctor>> GetDoctorsAsync() =>
+        IsConfigured ? await GetCollectionAsync("Doctor", MapDoctor) : DemoDoctors.Values.OrderBy(x => x.LastName).ToList();
+
+    public async Task<Doctor?> GetDoctorAsync(string id) =>
+        IsConfigured ? (await GetCollectionAsync("Doctor", MapDoctor)).FirstOrDefault(x => x.Id == id) : DemoDoctors.GetValueOrDefault(id);
+
     public async Task<string> SaveDoctorAsync(Doctor item)
     {
         if (IsConfigured) return await SaveAsync("Doctor", item.Id, item);
-        var id = item.Id ?? Guid.NewGuid().ToString("N")[..8]; item.Id = id; DemoDoctors[id] = item; return id;
+        var id = item.Id ?? Guid.NewGuid().ToString("N")[..8];
+        item.Id = id;
+        DemoDoctors[id] = item;
+        return id;
     }
-    public async Task DeleteDoctorAsync(string id) { if (IsConfigured) await DeleteAsync("Doctor", id); else DemoDoctors.TryRemove(id, out _); }
 
-    public async Task<List<Appointment>> GetAppointmentsAsync() => IsConfigured ? await GetCollectionAsync("Appointment", MapAppointment) : DemoAppointments.Values.OrderBy(x => x.Date).ThenBy(x => x.Time).ToList();
-    public async Task<Appointment?> GetAppointmentAsync(string id) => IsConfigured ? (await GetCollectionAsync("Appointment", MapAppointment)).FirstOrDefault(x => x.Id == id) : DemoAppointments.GetValueOrDefault(id);
+    public async Task DeleteDoctorAsync(string id)
+    {
+        if (IsConfigured) await DeleteAsync("Doctor", id);
+        else DemoDoctors.TryRemove(id, out _);
+    }
+
+    public async Task<List<Appointment>> GetAppointmentsAsync() =>
+        IsConfigured ? await GetCollectionAsync("Appointment", MapAppointment) : DemoAppointments.Values.OrderBy(x => x.Date).ThenBy(x => x.Time).ToList();
+
+    public async Task<Appointment?> GetAppointmentAsync(string id) =>
+        IsConfigured ? (await GetCollectionAsync("Appointment", MapAppointment)).FirstOrDefault(x => x.Id == id) : DemoAppointments.GetValueOrDefault(id);
+
     public async Task<string> SaveAppointmentAsync(Appointment item)
     {
         if (IsConfigured) return await SaveAsync("Appointment", item.Id, item);
-        var id = item.Id ?? Guid.NewGuid().ToString("N")[..8]; item.Id = id; DemoAppointments[id] = item; return id;
+        var id = item.Id ?? Guid.NewGuid().ToString("N")[..8];
+        item.Id = id;
+        DemoAppointments[id] = item;
+        return id;
     }
-    public async Task DeleteAppointmentAsync(string id) { if (IsConfigured) await DeleteAsync("Appointment", id); else DemoAppointments.TryRemove(id, out _); }
 
-    public async Task<List<MedicalRecord>> GetMedicalRecordsAsync() => IsConfigured ? await GetCollectionAsync("MedicalRecord", MapRecord) : DemoRecords.Values.OrderByDescending(x => x.RecordDate).ToList();
-    public async Task<MedicalRecord?> GetMedicalRecordAsync(string id) => IsConfigured ? (await GetCollectionAsync("MedicalRecord", MapRecord)).FirstOrDefault(x => x.Id == id) : DemoRecords.GetValueOrDefault(id);
+    public async Task DeleteAppointmentAsync(string id)
+    {
+        if (IsConfigured) await DeleteAsync("Appointment", id);
+        else DemoAppointments.TryRemove(id, out _);
+    }
+
+    public async Task<List<MedicalRecord>> GetMedicalRecordsAsync() =>
+        IsConfigured ? await GetCollectionAsync("MedicalRecord", MapRecord) : DemoRecords.Values.OrderByDescending(x => x.RecordDate).ToList();
+
+    public async Task<MedicalRecord?> GetMedicalRecordAsync(string id) =>
+        IsConfigured ? (await GetCollectionAsync("MedicalRecord", MapRecord)).FirstOrDefault(x => x.Id == id) : DemoRecords.GetValueOrDefault(id);
+
     public async Task<string> SaveMedicalRecordAsync(MedicalRecord item)
     {
         if (IsConfigured) return await SaveAsync("MedicalRecord", item.Id, item);
-        var id = item.Id ?? Guid.NewGuid().ToString("N")[..8]; item.Id = id; DemoRecords[id] = item; return id;
+        var id = item.Id ?? Guid.NewGuid().ToString("N")[..8];
+        item.Id = id;
+        DemoRecords[id] = item;
+        return id;
     }
-    public async Task DeleteMedicalRecordAsync(string id) { if (IsConfigured) await DeleteAsync("MedicalRecord", id); else DemoRecords.TryRemove(id, out _); }
 
-    public async Task<List<Prescription>> GetPrescriptionsAsync() => IsConfigured ? await GetCollectionAsync("Prescription", MapPrescription) : DemoPrescriptions.Values.OrderByDescending(x => x.PrescriptionDate).ToList();
-    public async Task<Prescription?> GetPrescriptionAsync(string id) => IsConfigured ? (await GetCollectionAsync("Prescription", MapPrescription)).FirstOrDefault(x => x.Id == id) : DemoPrescriptions.GetValueOrDefault(id);
+    public async Task DeleteMedicalRecordAsync(string id)
+    {
+        if (IsConfigured) await DeleteAsync("MedicalRecord", id);
+        else DemoRecords.TryRemove(id, out _);
+    }
+
+    public async Task<List<Prescription>> GetPrescriptionsAsync() =>
+        IsConfigured ? await GetCollectionAsync("Prescription", MapPrescription) : DemoPrescriptions.Values.OrderByDescending(x => x.PrescriptionDate).ToList();
+
+    public async Task<Prescription?> GetPrescriptionAsync(string id) =>
+        IsConfigured ? (await GetCollectionAsync("Prescription", MapPrescription)).FirstOrDefault(x => x.Id == id) : DemoPrescriptions.GetValueOrDefault(id);
+
     public async Task<string> SavePrescriptionAsync(Prescription item)
     {
         if (IsConfigured) return await SaveAsync("Prescription", item.Id, item);
-        var id = item.Id ?? Guid.NewGuid().ToString("N")[..8]; item.Id = id; DemoPrescriptions[id] = item; return id;
+        var id = item.Id ?? Guid.NewGuid().ToString("N")[..8];
+        item.Id = id;
+        DemoPrescriptions[id] = item;
+        return id;
     }
-    public async Task DeletePrescriptionAsync(string id) { if (IsConfigured) await DeleteAsync("Prescription", id); else DemoPrescriptions.TryRemove(id, out _); }
+
+    public async Task DeletePrescriptionAsync(string id)
+    {
+        if (IsConfigured) await DeleteAsync("Prescription", id);
+        else DemoPrescriptions.TryRemove(id, out _);
+    }
 
     public async Task<DashboardViewModel> GetDashboardAsync()
     {
@@ -226,6 +368,7 @@ public class FirebaseService : IFirebaseService
         var appointmentsTask = GetAppointmentsAsync();
         var recordsTask = GetMedicalRecordsAsync();
         var prescriptionsTask = GetPrescriptionsAsync();
+
         await Task.WhenAll(patientsTask, doctorsTask, appointmentsTask, recordsTask, prescriptionsTask);
 
         var appointments = appointmentsTask.Result;
@@ -234,7 +377,9 @@ public class FirebaseService : IFirebaseService
             Patients = patientsTask.Result.Count,
             Doctors = doctorsTask.Result.Count,
             Appointments = appointments.Count,
-            PendingAppointments = appointments.Count(x => x.Status.Equals("Requested", StringComparison.OrdinalIgnoreCase) || x.Status.Equals("Pending", StringComparison.OrdinalIgnoreCase)),
+            PendingAppointments = appointments.Count(x =>
+                x.Status.Equals("Requested", StringComparison.OrdinalIgnoreCase) ||
+                x.Status.Equals("Pending", StringComparison.OrdinalIgnoreCase)),
             MedicalRecords = recordsTask.Result.Count,
             Prescriptions = prescriptionsTask.Result.Count,
             FirebaseConnected = IsConfigured,
